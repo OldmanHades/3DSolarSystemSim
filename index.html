@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Solar System 3D Simulation</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./styles.css">
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main id="app">
+      <section class="panel left-panel" aria-label="Solar system objects">
+        <header class="brand">
+          <p>3D Simulation</p>
+          <h1>Solar System</h1>
+        </header>
+        <label class="search">
+          <span>Search</span>
+          <input id="search" type="search" autocomplete="off" placeholder="Planet, moon, belt...">
+        </label>
+        <div id="object-list" class="object-list"></div>
+      </section>
+
+      <section id="viewport" class="viewport" aria-label="Interactive 3D solar system">
+        <div id="labels" class="labels" aria-hidden="false"></div>
+      </section>
+
+      <section id="details" class="panel details-panel" aria-live="polite">
+        <header class="details-header">
+          <p id="selected-subtitle">Planet</p>
+          <h2 id="selected-title">Earth</h2>
+        </header>
+        <p id="selected-summary" class="summary"></p>
+        <div id="selected-stats" class="stats"></div>
+        <ul id="selected-details" class="details-list"></ul>
+        <div class="source-block">
+          <h3>Sources</h3>
+          <div id="selected-sources" class="sources"></div>
+        </div>
+        <p id="accuracy-note" class="accuracy-note"></p>
+      </section>
+
+      <nav class="control-bar" aria-label="Simulation controls">
+        <button id="play" class="control-button active" type="button" aria-pressed="true">Pause</button>
+        <label class="speed-control">
+          <span>Speed</span>
+          <input id="speed" type="range" min="1" max="240" step="1" value="36">
+          <strong id="speed-value">36 d/s</strong>
+        </label>
+        <time id="date" class="date-chip">Jun 12, 2026</time>
+        <button id="track" class="control-button active" type="button" aria-pressed="true">Track</button>
+        <button id="labels-toggle" class="control-button active" type="button" aria-pressed="true">Labels</button>
+        <button id="reset-view" class="control-button" type="button">Reset</button>
+      </nav>
+    </main>
+
+    <script type="module" src="./js/main.js"></script>
+  </body>
+</html>

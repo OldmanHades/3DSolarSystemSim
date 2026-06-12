@@ -1,0 +1,18 @@
+# Windows and editor noise
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Local environment and logs
+.env
+.env.*
+*.log
+*.tmp
+*.bak
+
+# Dependency/build folders if future tooling is added
+node_modules/
+dist/
+build/
