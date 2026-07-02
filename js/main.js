@@ -8,10 +8,47 @@ import {
   REVIEWED_AT,
   SCIENCE_SOURCES
 } from "./solarData.js";
+import {
+  createGlowTexture,
+  createRingTexture,
+  createTextureSet,
+  hashCode,
+  mulberry32
+} from "./textures.js";
 
 const AU_KM = 149597870.7;
 const BASE_DATE_UTC = Date.UTC(2026, 5, 12);
 const TWO_PI = Math.PI * 2;
+const UP_Y = new THREE.Vector3(0, 1, 0);
+
+const SPEED_MIN = 0.02;
+const SPEED_MAX = 500;
+const SPEED_PRESETS = [
+  { label: "1 hr/s", value: 1 / 24 },
+  { label: "1 day/s", value: 1 },
+  { label: "1 wk/s", value: 7 },
+  { label: "1 mo/s", value: 30.44 },
+  { label: "1 yr/s", value: 365.25 }
+];
+
+const bootStatus = {
+  phase: "module-start",
+  error: null
+};
+window.__solarSystemBoot = bootStatus;
+
+function setBootPhase(phase) {
+  bootStatus.phase = phase;
+}
+
+function recordBootError(error) {
+  bootStatus.error = {
+    name: error?.name ?? "Error",
+    message: error?.message ?? String(error),
+    stack: error?.stack ? String(error.stack) : null
+  };
+  console.error("Solar system startup failed", error);
+}
 
 const els = {
   viewport: document.querySelector("#viewport"),
@@ -28,6 +65,7 @@ const els = {
   play: document.querySelector("#play"),
   speed: document.querySelector("#speed"),
   speedValue: document.querySelector("#speed-value"),
+  speedPresets: document.querySelector("#speed-presets"),
   date: document.querySelector("#date"),
   track: document.querySelector("#track"),
   labelsToggle: document.querySelector("#labels-toggle"),
@@ -58,7 +96,7 @@ for (const comet of COMETS) objectData.set(comet.id, comet);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#02040a");
 
-const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 900);
+const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 1200);
 camera.position.set(0, 62, 150);
 
 const renderer = new THREE.WebGLRenderer({
@@ -78,14 +116,14 @@ controls.minDistance = 5;
 controls.maxDistance = 420;
 controls.target.set(0, 0, 0);
 
-const ambientLight = new THREE.AmbientLight("#8ba0bb", 0.42);
+const ambientLight = new THREE.AmbientLight("#8ba0bb", 0.36);
 scene.add(ambientLight);
 
-const sunLight = new THREE.PointLight("#ffe7b0", 3.5, 600, 1.35);
+const sunLight = new THREE.PointLight("#ffe7b0", 3.6, 700, 1.32);
 sunLight.position.set(0, 0, 0);
 scene.add(sunLight);
 
-const fillLight = new THREE.DirectionalLight("#8fb6ff", 0.28);
+const fillLight = new THREE.DirectionalLight("#8fb6ff", 0.24);
 fillLight.position.set(-80, 60, 90);
 scene.add(fillLight);
 
@@ -94,19 +132,23 @@ scene.add(systemRoot);
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-const tempVec = new THREE.Vector3();
 let lastFrameTime = performance.now();
+let elapsedSeconds = 0;
 
 const records = new Map();
 const labels = new Map();
 const selectableObjects = [];
-const textureCache = new Map();
+const beltRockSystems = [];
+const instanceDummy = new THREE.Object3D();
+let sunPulse = null;
 let selectedId = "earth";
 let running = true;
 let trackSelected = true;
 let labelsVisible = true;
 let simDays = 0;
-let speedDaysPerSecond = Number(els.speed.value);
+let speedDaysPerSecond = 7;
+let lastFrameError = null;
+let frameErrorReported = false;
 
 const selectionHalo = new THREE.Mesh(
   new THREE.SphereGeometry(1, 36, 18),
@@ -121,10 +163,25 @@ const selectionHalo = new THREE.Mesh(
 selectionHalo.visible = false;
 scene.add(selectionHalo);
 
-initScene();
-buildObjectList();
-selectObject(selectedId, false);
-animate();
+try {
+  setBootPhase("init-scene");
+  initScene();
+  setBootPhase("build-object-list");
+  buildObjectList();
+  setBootPhase("build-speed-controls");
+  buildSpeedControls();
+  setBootPhase("bind-events");
+  bindEvents();
+  setBootPhase("expose-api");
+  exposeAppApi();
+  setBootPhase("select-initial-object");
+  selectObject(selectedId, false);
+  setBootPhase("start-animation");
+  animate();
+  setBootPhase("ready");
+} catch (error) {
+  recordBootError(error);
+}
 
 function initScene() {
   createStarfield();
@@ -143,7 +200,13 @@ function bodyRadiusScale(radiusKm, category) {
   if (category === "Star") return 3.8;
   const earthRatio = radiusKm / 6371;
   const base = Math.pow(Math.max(earthRatio, 0.00001), 0.45) * 0.72;
-  const min = category === "Moon" ? 0.09 : category === "Dwarf planet" ? 0.18 : 0.25;
+  const min = category === "Moon"
+    ? 0.09
+    : category === "Asteroid"
+      ? 0.13
+      : category === "Dwarf planet"
+        ? 0.18
+        : 0.25;
   const max = category === "Moon" ? 0.42 : 2.55;
   return THREE.MathUtils.clamp(base, min, max);
 }
@@ -155,46 +218,119 @@ function moonOrbitScale(parent, moon) {
   return Math.max(ringBuffer, parentRadius + 1.0) + logOrbit * 0.72;
 }
 
+/* ------------------------------------------------------------------ */
+/* Sky                                                                 */
+/* ------------------------------------------------------------------ */
+
 function createStarfield() {
-  const count = 4200;
-  const positions = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
+  const layers = [
+    { count: 3400, size: 0.45, opacity: 0.8 },
+    { count: 2100, size: 0.85, opacity: 0.72 },
+    { count: 420, size: 1.55, opacity: 0.9 }
+  ];
   const colorA = new THREE.Color("#ffffff");
   const colorB = new THREE.Color("#8fb6ff");
   const colorC = new THREE.Color("#ffd8a6");
+  const random = mulberry32(hashCode("starfield"));
 
-  for (let i = 0; i < count; i += 1) {
-    const radius = 260 + Math.random() * 220;
-    const theta = Math.random() * TWO_PI;
-    const phi = Math.acos(2 * Math.random() - 1);
-    positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = radius * Math.cos(phi);
-    positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
-
-    const starColor = Math.random() > 0.82 ? colorB : Math.random() > 0.68 ? colorC : colorA;
-    colors[i * 3] = starColor.r;
-    colors[i * 3 + 1] = starColor.g;
-    colors[i * 3 + 2] = starColor.b;
+  for (const layer of layers) {
+    const positions = new Float32Array(layer.count * 3);
+    const colors = new Float32Array(layer.count * 3);
+    for (let i = 0; i < layer.count; i += 1) {
+      const radius = 300 + random() * 190;
+      const theta = random() * TWO_PI;
+      const phi = Math.acos(2 * random() - 1);
+      positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = radius * Math.cos(phi);
+      positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+      const starColor = random() > 0.82 ? colorB : random() > 0.68 ? colorC : colorA;
+      const brightness = 0.7 + random() * 0.3;
+      colors[i * 3] = starColor.r * brightness;
+      colors[i * 3 + 1] = starColor.g * brightness;
+      colors[i * 3 + 2] = starColor.b * brightness;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    const material = new THREE.PointsMaterial({
+      size: layer.size,
+      sizeAttenuation: true,
+      vertexColors: true,
+      transparent: true,
+      opacity: layer.opacity,
+      depthWrite: false
+    });
+    scene.add(new THREE.Points(geometry, material));
   }
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  const material = new THREE.PointsMaterial({
-    size: 0.62,
+  // Milky Way: a dense, tilted band of faint stars plus soft nebula glows
+  const band = new THREE.Group();
+  band.rotation.set(1.08, 0.2, 0.42);
+  const bandCount = 3600;
+  const positions = new Float32Array(bandCount * 3);
+  const colors = new Float32Array(bandCount * 3);
+  const warm = new THREE.Color("#f5e8d0");
+  const cool = new THREE.Color("#c8d8f5");
+  for (let i = 0; i < bandCount; i += 1) {
+    const theta = random() * TWO_PI;
+    const radius = 330 + random() * 150;
+    // Approximate gaussian thickness via averaged uniforms
+    const spread = ((random() + random() + random()) / 3 - 0.5) * 90;
+    positions[i * 3] = Math.cos(theta) * radius;
+    positions[i * 3 + 1] = spread * 0.55;
+    positions[i * 3 + 2] = Math.sin(theta) * radius;
+    const c = random() > 0.5 ? warm : cool;
+    const brightness = 0.35 + random() * 0.5;
+    colors[i * 3] = c.r * brightness;
+    colors[i * 3 + 1] = c.g * brightness;
+    colors[i * 3 + 2] = c.b * brightness;
+  }
+  const bandGeometry = new THREE.BufferGeometry();
+  bandGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  bandGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  band.add(new THREE.Points(bandGeometry, new THREE.PointsMaterial({
+    size: 0.5,
     sizeAttenuation: true,
     vertexColors: true,
     transparent: true,
-    opacity: 0.82
-  });
-  const stars = new THREE.Points(geometry, material);
-  stars.name = "starfield";
-  scene.add(stars);
+    opacity: 0.55,
+    depthWrite: false
+  })));
+
+  const nebulaTexture = createGlowTexture([
+    [0, "rgba(214,224,246,0.28)"],
+    [0.5, "rgba(190,204,238,0.1)"],
+    [1, "rgba(180,196,232,0)"]
+  ]);
+  for (let i = 0; i < 9; i += 1) {
+    const theta = random() * TWO_PI;
+    const radius = 350 + random() * 110;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: nebulaTexture,
+      transparent: true,
+      opacity: 0.16 + random() * 0.12,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    }));
+    sprite.position.set(Math.cos(theta) * radius, (random() - 0.5) * 40, Math.sin(theta) * radius);
+    sprite.scale.setScalar(60 + random() * 110);
+    band.add(sprite);
+  }
+  scene.add(band);
 }
+
+/* ------------------------------------------------------------------ */
+/* Bodies                                                              */
+/* ------------------------------------------------------------------ */
 
 function createBodySystem(data) {
   const visualRadius = bodyRadiusScale(data.radiusKm, data.category);
-  const orbitLine = data.semiMajorAU ? createOrbitLine(data, data.category === "Dwarf planet" ? "#7ba4c8" : "#52698b", 0.44) : null;
+  const orbitColor = data.category === "Dwarf planet"
+    ? "#7ba4c8"
+    : data.category === "Asteroid"
+      ? "#8a7f6d"
+      : "#52698b";
+  const orbitLine = data.semiMajorAU ? createOrbitLine(data, orbitColor, 0.44) : null;
   if (orbitLine) systemRoot.add(orbitLine);
 
   const group = new THREE.Group();
@@ -211,12 +347,33 @@ function createBodySystem(data) {
 
   if (data.category === "Star") createSunGlow(axisGroup, visualRadius);
   if (data.rings) createRings(data, visualRadius, axisGroup);
+  if (data.atmosphere) axisGroup.add(createAtmosphereShell(visualRadius, data.atmosphere, data.stretch));
+
+  let clouds = null;
+  if (data.id === "earth") {
+    const textures = createTextureSet(data);
+    if (textures.cloudsMap) {
+      clouds = new THREE.Mesh(
+        new THREE.SphereGeometry(visualRadius * 1.018, 64, 32),
+        new THREE.MeshStandardMaterial({
+          map: textures.cloudsMap,
+          transparent: true,
+          opacity: 0.92,
+          roughness: 1,
+          metalness: 0,
+          depthWrite: false
+        })
+      );
+      axisGroup.add(clouds);
+    }
+  }
 
   const record = {
     data,
     group,
     axisGroup,
     mesh,
+    clouds,
     visualRadius,
     orbitLine,
     type: "body",
@@ -232,20 +389,36 @@ function createBodySystem(data) {
 }
 
 function createBodyMesh(data, visualRadius) {
-  const isIrregular = data.category === "Moon" && data.radiusKm < 300;
-  const geometry = isIrregular
-    ? new THREE.IcosahedronGeometry(1, 2)
-    : new THREE.SphereGeometry(1, 64, 32);
-  const texture = getTexture(data);
-  const material = data.category === "Star"
-    ? new THREE.MeshBasicMaterial({ map: texture, color: "#fff1a6" })
-    : new THREE.MeshStandardMaterial({
-      map: texture,
-      roughness: 0.92,
+  const lumpAmplitude = data.category === "Comet"
+    ? 0.42
+    : data.category === "Moon" && data.radiusKm < 300
+      ? 0.26
+      : data.category === "Asteroid" && data.radiusKm < 280
+        ? 0.12
+        : 0;
+  const detailed = data.category === "Planet" || data.category === "Star";
+  const geometry = lumpAmplitude > 0
+    ? createLumpyGeometry(data.id, lumpAmplitude)
+    : new THREE.SphereGeometry(1, detailed ? 96 : 48, detailed ? 48 : 32);
+
+  const textures = createTextureSet(data);
+  let material;
+  if (data.category === "Star") {
+    material = new THREE.MeshBasicMaterial({ map: textures.map, color: "#fff1a6" });
+  } else {
+    material = new THREE.MeshStandardMaterial({
+      map: textures.map,
+      roughness: textures.roughnessMap ? 1 : 0.92,
       metalness: 0,
       emissive: new THREE.Color(data.color ?? "#ffffff"),
       emissiveIntensity: data.category === "Comet" ? 0.1 : 0.015
     });
+    if (textures.roughnessMap) material.roughnessMap = textures.roughnessMap;
+    if (textures.bumpMap) {
+      material.bumpMap = textures.bumpMap;
+      material.bumpScale = 0.045;
+    }
+  }
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = data.name;
@@ -256,46 +429,147 @@ function createBodyMesh(data, visualRadius) {
   return mesh;
 }
 
+function createLumpyGeometry(id, amplitude) {
+  const geometry = new THREE.IcosahedronGeometry(1, 3);
+  const random = mulberry32(hashCode(`${id}:shape`));
+  const lumps = [];
+  for (let i = 0; i < 7; i += 1) {
+    lumps.push({
+      dir: new THREE.Vector3(random() * 2 - 1, random() * 2 - 1, random() * 2 - 1).normalize(),
+      amp: (random() - 0.35) * amplitude,
+      sharp: 1.5 + random() * 3.5
+    });
+  }
+  const freq = [6 + random() * 6, 6 + random() * 6, 6 + random() * 6];
+  const phase = [random() * TWO_PI, random() * TWO_PI, random() * TWO_PI];
+  const position = geometry.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < position.count; i += 1) {
+    v.set(position.getX(i), position.getY(i), position.getZ(i)).normalize();
+    let displacement = 0;
+    for (const lump of lumps) {
+      displacement += lump.amp * Math.pow(Math.max(v.dot(lump.dir), 0), lump.sharp);
+    }
+    displacement += amplitude * 0.14 *
+      Math.sin(v.x * freq[0] + phase[0]) *
+      Math.sin(v.y * freq[1] + phase[1]) *
+      Math.sin(v.z * freq[2] + phase[2]);
+    const r = 1 + displacement;
+    position.setXYZ(i, v.x * r, v.y * r, v.z * r);
+  }
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createAtmosphereShell(visualRadius, atmosphere, stretch) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(visualRadius * 1.14, 48, 24),
+    new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color(atmosphere.color) },
+        uIntensity: { value: atmosphere.intensity },
+        uPower: { value: 3.1 }
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vView;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vView = normalize(-mvPosition.xyz);
+          gl_Position = projectionMatrix * mvPosition;
+        }`,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uIntensity;
+        uniform float uPower;
+        varying vec3 vNormal;
+        varying vec3 vView;
+        void main() {
+          float rim = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vView)), 0.0, 1.0), uPower);
+          gl_FragColor = vec4(uColor, rim * uIntensity);
+        }`,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+  );
+  if (stretch) mesh.scale.set(stretch[0], stretch[1], stretch[2]);
+  return mesh;
+}
+
 function createSunGlow(parent, visualRadius) {
-  const glowGeometry = new THREE.SphereGeometry(visualRadius * 1.8, 48, 24);
-  const glowMaterial = new THREE.MeshBasicMaterial({
-    color: "#ffb33b",
+  const shell = new THREE.Mesh(
+    new THREE.SphereGeometry(visualRadius * 1.35, 48, 24),
+    new THREE.MeshBasicMaterial({
+      color: "#ffb33b",
+      transparent: true,
+      opacity: 0.1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+  );
+  parent.add(shell);
+
+  const innerTexture = createGlowTexture([
+    [0, "rgba(255,244,200,0.95)"],
+    [0.3, "rgba(255,196,90,0.45)"],
+    [0.7, "rgba(255,140,40,0.1)"],
+    [1, "rgba(255,120,30,0)"]
+  ]);
+  const inner = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: innerTexture,
     transparent: true,
-    opacity: 0.12,
+    opacity: 0.95,
     blending: THREE.AdditiveBlending,
     depthWrite: false
-  });
-  const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-  parent.add(glow);
+  }));
+  inner.scale.setScalar(visualRadius * 3.6);
+  parent.add(inner);
+
+  const coronaTexture = createGlowTexture([
+    [0, "rgba(255,214,140,0.5)"],
+    [0.3, "rgba(255,170,70,0.16)"],
+    [0.65, "rgba(255,130,40,0.05)"],
+    [1, "rgba(255,110,30,0)"]
+  ]);
+  const corona = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: coronaTexture,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  }));
+  corona.scale.setScalar(visualRadius * 7.2);
+  parent.add(corona);
+
+  sunPulse = { inner, corona, innerBase: visualRadius * 3.6, coronaBase: visualRadius * 7.2 };
 }
 
 function createRings(data, visualRadius, parent) {
   const ring = data.rings;
-  const geometry = new THREE.RingGeometry(visualRadius * ring.inner, visualRadius * ring.outer, 160, 3);
-  const material = new THREE.MeshStandardMaterial({
-    color: ring.color,
+  const inner = visualRadius * ring.inner;
+  const outer = visualRadius * ring.outer;
+  const geometry = new THREE.RingGeometry(inner, outer, 256, 4);
+  // Remap UVs so the texture strip runs radially across the annulus
+  const position = geometry.attributes.position;
+  const uv = geometry.attributes.uv;
+  for (let i = 0; i < position.count; i += 1) {
+    const radius = Math.hypot(position.getX(i), position.getY(i));
+    uv.setXY(i, (radius - inner) / (outer - inner), 0.5);
+  }
+  const material = new THREE.MeshBasicMaterial({
+    map: createRingTexture(ring.style ?? "jupiter"),
     side: THREE.DoubleSide,
     transparent: true,
-    opacity: ring.opacity,
-    roughness: 0.8,
-    metalness: 0
+    opacity: Math.min(ring.opacity + 0.42, 1),
+    depthWrite: false
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = Math.PI / 2;
   mesh.name = `${data.name} rings`;
   mesh.userData.objectId = data.id;
   parent.add(mesh);
-
-  const lineMaterial = new THREE.LineBasicMaterial({
-    color: ring.color,
-    transparent: true,
-    opacity: Math.min(ring.opacity + 0.16, 0.82)
-  });
-  for (const scale of [ring.inner, (ring.inner + ring.outer) / 2, ring.outer]) {
-    const points = circlePoints(visualRadius * scale, 180, 0);
-    const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), lineMaterial);
-    parent.add(line);
-  }
 }
 
 function createMoonSystem(parentData, moon, parentAxisGroup) {
@@ -318,6 +592,7 @@ function createMoonSystem(parentData, moon, parentAxisGroup) {
   const mesh = createBodyMesh(moon, visualRadius);
   group.add(mesh);
   selectableObjects.push(mesh);
+  if (moon.atmosphere) group.add(createAtmosphereShell(visualRadius, moon.atmosphere));
 
   const record = {
     data: moon,
@@ -334,48 +609,53 @@ function createMoonSystem(parentData, moon, parentAxisGroup) {
   return record;
 }
 
+/* ------------------------------------------------------------------ */
+/* Comets                                                              */
+/* ------------------------------------------------------------------ */
+
 function createComet(data) {
-  const orbitLine = createOrbitLine(data, "#9bcfff", 0.55, true);
+  const orbitLine = createOrbitLine(data, "#9bcfff", 0.5, true);
   systemRoot.add(orbitLine);
 
   const group = new THREE.Group();
   systemRoot.add(group);
   const visualRadius = 0.16;
 
-  const coma = new THREE.Mesh(
-    new THREE.SphereGeometry(visualRadius * 2.3, 24, 12),
-    new THREE.MeshBasicMaterial({
-      color: "#cdefff",
-      transparent: true,
-      opacity: 0.18,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    })
-  );
-  group.add(coma);
-
   const nucleus = createBodyMesh(data, visualRadius);
   group.add(nucleus);
   selectableObjects.push(nucleus);
 
-  const tailGeometry = new THREE.ConeGeometry(visualRadius * 0.75, 3.8, 18, 1, true);
-  const tailMaterial = new THREE.MeshBasicMaterial({
-    color: "#d9f2ff",
+  const comaTexture = createGlowTexture([
+    [0, "rgba(214,240,255,0.9)"],
+    [0.4, "rgba(160,212,255,0.32)"],
+    [1, "rgba(140,190,255,0)"]
+  ]);
+  const coma = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: comaTexture,
     transparent: true,
-    opacity: 0.22,
+    opacity: 0.4,
     blending: THREE.AdditiveBlending,
     depthWrite: false
-  });
-  const tail = new THREE.Mesh(tailGeometry, tailMaterial);
-  tail.rotation.z = Math.PI / 2;
-  tail.position.x = 1.9;
-  group.add(tail);
+  }));
+  coma.scale.setScalar(1.2);
+  group.add(coma);
+
+  const tailGroup = new THREE.Group();
+  group.add(tailGroup);
+  // Ion tail: straight, bluish, narrow, points directly away from the Sun
+  const ionTail = createTailMesh(5.2, 0.2, "#9fd4ff", 0.3);
+  tailGroup.add(ionTail);
+  // Dust tail: broader, warmer, lagging slightly behind the orbital motion
+  const dustTail = createTailMesh(3.2, 0.42, "#e9dfc9", 0.2);
+  dustTail.rotation.z = 0.24;
+  tailGroup.add(dustTail);
 
   const record = {
     data,
     group,
     mesh: nucleus,
-    tail,
+    coma,
+    tailGroup,
     visualRadius,
     orbitLine,
     type: "comet"
@@ -383,6 +663,25 @@ function createComet(data) {
   records.set(data.id, record);
   createLabel(data.id, data.name, data.category);
 }
+
+function createTailMesh(length, baseRadius, color, opacity) {
+  const geometry = new THREE.ConeGeometry(baseRadius, length, 20, 1, true);
+  geometry.rotateX(Math.PI);
+  geometry.translate(0, length / 2, 0);
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  return new THREE.Mesh(geometry, material);
+}
+
+/* ------------------------------------------------------------------ */
+/* Regions                                                             */
+/* ------------------------------------------------------------------ */
 
 function createRegion(region) {
   if (region.id === "oort-cloud") {
@@ -407,15 +706,16 @@ function createRegion(region) {
   systemRoot.add(ring);
   selectableObjects.push(ring);
 
-  const particleCount = region.id === "kuiper-belt" ? 1500 : 900;
+  const random = mulberry32(hashCode(region.id));
+  const particleCount = region.id === "kuiper-belt" ? 2600 : 1400;
   const positions = new Float32Array(particleCount * 3);
   const color = new THREE.Color(region.color);
   for (let i = 0; i < particleCount; i += 1) {
-    const theta = Math.random() * TWO_PI;
-    const au = region.innerAU + Math.random() * (region.outerAU - region.innerAU);
+    const theta = random() * TWO_PI;
+    const au = region.innerAU + random() * (region.outerAU - region.innerAU);
     const radius = distanceScale(au);
     positions[i * 3] = Math.cos(theta) * radius;
-    positions[i * 3 + 1] = (Math.random() - 0.5) * (region.id === "kuiper-belt" ? 3.4 : 1.5);
+    positions[i * 3 + 1] = (random() - 0.5) * (region.id === "kuiper-belt" ? 3.4 : 1.5);
     positions[i * 3 + 2] = Math.sin(theta) * radius;
   }
   const particles = new THREE.Points(
@@ -430,6 +730,8 @@ function createRegion(region) {
   );
   systemRoot.add(particles);
 
+  createBeltRocks(region, random);
+
   const labelPosition = new THREE.Vector3(outer * 0.92, 1.8, 0);
   records.set(region.id, {
     data: region,
@@ -441,6 +743,37 @@ function createRegion(region) {
     type: "region"
   });
   createLabel(region.id, region.name, region.category);
+}
+
+// Slowly orbiting, tumbling instanced rocks so belts read as 3D debris fields
+function createBeltRocks(region, random) {
+  const isKuiper = region.id === "kuiper-belt";
+  const count = isKuiper ? 380 : 720;
+  const geometry = new THREE.IcosahedronGeometry(1, 0);
+  const material = new THREE.MeshStandardMaterial({
+    color: isKuiper ? "#9ab4d4" : "#8a7a66",
+    roughness: 0.95,
+    metalness: 0
+  });
+  const mesh = new THREE.InstancedMesh(geometry, material, count);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+  const rocks = [];
+  for (let i = 0; i < count; i += 1) {
+    const au = region.innerAU + random() * (region.outerAU - region.innerAU);
+    rocks.push({
+      radius: distanceScale(au),
+      angle: random() * TWO_PI,
+      speed: TWO_PI / (365.25 * Math.pow(au, 1.5)),
+      y: (random() - 0.5) * (isKuiper ? 3.6 : 1.4),
+      scale: (isKuiper ? 0.05 : 0.024) + random() * (isKuiper ? 0.08 : 0.05),
+      spinAxis: new THREE.Vector3(random() - 0.5, random() - 0.5, random() - 0.5).normalize(),
+      spinPhase: random() * TWO_PI,
+      spinRate: 0.2 + random() * 1.4
+    });
+  }
+  systemRoot.add(mesh);
+  beltRockSystems.push({ mesh, rocks });
 }
 
 function createOortCloud(region) {
@@ -460,12 +793,13 @@ function createOortCloud(region) {
   systemRoot.add(shell);
   selectableObjects.push(shell);
 
-  const count = 900;
+  const random = mulberry32(hashCode(region.id));
+  const count = 1200;
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i += 1) {
-    const radius = displayRadius * (0.8 + Math.random() * 0.18);
-    const theta = Math.random() * TWO_PI;
-    const phi = Math.acos(2 * Math.random() - 1);
+    const radius = displayRadius * (0.8 + random() * 0.18);
+    const theta = random() * TWO_PI;
+    const phi = Math.acos(2 * random() - 1);
     positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
     positions[i * 3 + 1] = radius * Math.cos(phi);
     positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
@@ -493,6 +827,10 @@ function createOortCloud(region) {
   });
   createLabel(region.id, region.name, region.category);
 }
+
+/* ------------------------------------------------------------------ */
+/* Orbits and Kepler solving                                           */
+/* ------------------------------------------------------------------ */
 
 function createOrbitLine(data, color, opacity = 0.45, comet = false) {
   const points = [];
@@ -532,8 +870,8 @@ function inclinedPosition(au, trueAnomaly, inclinationDeg) {
   return new THREE.Vector3(x, -z * Math.sin(inc), z * Math.cos(inc));
 }
 
-function keplerPosition(data, days) {
-  if (!data.semiMajorAU) return new THREE.Vector3(0, 0, 0);
+function keplerState(data, days) {
+  if (!data.semiMajorAU) return { position: new THREE.Vector3(), rAU: 0 };
   const period = Math.abs(data.orbitalPeriodDays);
   const direction = data.orbitalPeriodDays < 0 ? -1 : 1;
   const meanAnomaly = normalizeAngle((data.phase ?? 0) + direction * TWO_PI * (days / period));
@@ -543,17 +881,17 @@ function keplerPosition(data, days) {
     Math.sqrt(1 + eccentricity) * Math.sin(eccentricAnomaly / 2),
     Math.sqrt(1 - eccentricity) * Math.cos(eccentricAnomaly / 2)
   );
-  const radius = data.semiMajorAU * (1 - eccentricity * Math.cos(eccentricAnomaly));
-  return inclinedPosition(radius, trueAnomaly, data.inclinationDeg ?? 0);
+  const rAU = data.semiMajorAU * (1 - eccentricity * Math.cos(eccentricAnomaly));
+  return { position: inclinedPosition(rAU, trueAnomaly, data.inclinationDeg ?? 0), rAU };
 }
 
 function solveKepler(meanAnomaly, eccentricity) {
   let eccentricAnomaly = eccentricity < 0.8 ? meanAnomaly : Math.PI;
-  for (let i = 0; i < 8; i += 1) {
+  for (let i = 0; i < 10; i += 1) {
     const delta = (eccentricAnomaly - eccentricity * Math.sin(eccentricAnomaly) - meanAnomaly) /
       (1 - eccentricity * Math.cos(eccentricAnomaly));
     eccentricAnomaly -= delta;
-    if (Math.abs(delta) < 1e-6) break;
+    if (Math.abs(delta) < 1e-7) break;
   }
   return eccentricAnomaly;
 }
@@ -562,286 +900,9 @@ function normalizeAngle(value) {
   return ((value % TWO_PI) + TWO_PI) % TWO_PI;
 }
 
-function getTexture(data) {
-  const key = `${data.id}:${data.texture ?? "smooth"}:${data.color}`;
-  if (textureCache.has(key)) return textureCache.get(key);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 256;
-  const ctx = canvas.getContext("2d");
-  const base = new THREE.Color(data.color ?? "#cccccc");
-  const seed = hashCode(data.id);
-  const random = mulberry32(seed);
-
-  paintBase(ctx, canvas, base);
-  const style = data.texture ?? "smooth";
-
-  if (style === "sun") paintSun(ctx, canvas, random);
-  else if (style === "bands" || style === "bandsSoft") paintBands(ctx, canvas, base, random, style === "bandsSoft");
-  else if (style === "earth") paintEarth(ctx, canvas, random);
-  else if (style === "mars") paintMars(ctx, canvas, random);
-  else if (style === "clouds") paintClouds(ctx, canvas, random);
-  else if (style === "cratered") paintCratered(ctx, canvas, base, random);
-  else if (style === "ice") paintIce(ctx, canvas, base, random);
-  else if (style === "volcanic") paintVolcanic(ctx, canvas, random);
-  else if (style === "haze") paintHaze(ctx, canvas, base, random);
-  else if (style === "pluto") paintPluto(ctx, canvas, random);
-  else if (style === "twoTone") paintTwoTone(ctx, canvas, base, random);
-  else if (style === "neptune") paintNeptune(ctx, canvas, random);
-  else if (style === "rocky") paintRocky(ctx, canvas, base, random);
-
-  addFineNoise(ctx, canvas, random, style === "sun" ? 0.16 : 0.1);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  textureCache.set(key, texture);
-  return texture;
-}
-
-function paintBase(ctx, canvas, base) {
-  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  gradient.addColorStop(0, lighten(base, 0.22));
-  gradient.addColorStop(0.52, `#${base.getHexString()}`);
-  gradient.addColorStop(1, darken(base, 0.28));
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-}
-
-function paintSun(ctx, canvas, random) {
-  for (let i = 0; i < 70; i += 1) {
-    const x = random() * canvas.width;
-    const y = random() * canvas.height;
-    const radius = 18 + random() * 52;
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    gradient.addColorStop(0, "rgba(255, 245, 150, 0.7)");
-    gradient.addColorStop(1, "rgba(255, 90, 0, 0)");
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, TWO_PI);
-    ctx.fill();
-  }
-}
-
-function paintBands(ctx, canvas, base, random, soft) {
-  for (let y = 0; y < canvas.height; y += 1) {
-    const band = Math.sin(y * 0.08) * 0.5 + Math.sin(y * 0.027 + 2.1) * 0.5;
-    const shade = band * (soft ? 0.08 : 0.18);
-    ctx.fillStyle = shade > 0 ? lighten(base, shade) : darken(base, Math.abs(shade));
-    ctx.fillRect(0, y, canvas.width, 1);
-  }
-
-  if (!soft) {
-    ctx.fillStyle = "rgba(150, 55, 34, 0.62)";
-    ctx.beginPath();
-    ctx.ellipse(canvas.width * 0.69, canvas.height * 0.58, 34, 15, -0.08, 0, TWO_PI);
-    ctx.fill();
-  }
-
-  ctx.globalAlpha = 0.26;
-  for (let i = 0; i < 18; i += 1) {
-    const y = random() * canvas.height;
-    ctx.fillStyle = random() > 0.5 ? "#fff3d2" : "#8f6a52";
-    ctx.fillRect(0, y, canvas.width, 1 + random() * 3);
-  }
-  ctx.globalAlpha = 1;
-}
-
-function paintEarth(ctx, canvas, random) {
-  ctx.fillStyle = "#2e75c7";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < 26; i += 1) {
-    paintBlob(ctx, random() * canvas.width, random() * canvas.height, 18 + random() * 46, "#4f8f50", random, 0.72);
-  }
-  ctx.fillStyle = "rgba(255,255,255,0.82)";
-  ctx.fillRect(0, 0, canvas.width, 16);
-  ctx.fillRect(0, canvas.height - 18, canvas.width, 18);
-  ctx.globalAlpha = 0.48;
-  for (let i = 0; i < 26; i += 1) {
-    paintBlob(ctx, random() * canvas.width, random() * canvas.height, 14 + random() * 34, "#ffffff", random, 0.46);
-  }
-  ctx.globalAlpha = 1;
-}
-
-function paintMars(ctx, canvas, random) {
-  ctx.fillStyle = "#b74f32";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < 34; i += 1) {
-    paintBlob(ctx, random() * canvas.width, random() * canvas.height, 8 + random() * 36, random() > 0.5 ? "#773a2c" : "#e1905e", random, 0.58);
-  }
-  ctx.fillStyle = "rgba(245,230,210,0.7)";
-  ctx.fillRect(0, 0, canvas.width, 10);
-  ctx.fillRect(0, canvas.height - 11, canvas.width, 11);
-}
-
-function paintClouds(ctx, canvas, random) {
-  ctx.globalAlpha = 0.55;
-  for (let i = 0; i < 42; i += 1) {
-    const y = random() * canvas.height;
-    ctx.strokeStyle = random() > 0.5 ? "#f0d9a2" : "#b98854";
-    ctx.lineWidth = 5 + random() * 9;
-    ctx.beginPath();
-    ctx.moveTo(-20, y);
-    for (let x = 0; x < canvas.width + 40; x += 38) {
-      ctx.lineTo(x, y + Math.sin(x * 0.02 + random() * 4) * 14);
-    }
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-}
-
-function paintCratered(ctx, canvas, base, random) {
-  for (let i = 0; i < 70; i += 1) {
-    const x = random() * canvas.width;
-    const y = random() * canvas.height;
-    const radius = 2 + random() * 13;
-    ctx.strokeStyle = darken(base, 0.25 + random() * 0.2);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, TWO_PI);
-    ctx.stroke();
-    ctx.fillStyle = `rgba(255,255,255,${0.04 + random() * 0.07})`;
-    ctx.beginPath();
-    ctx.arc(x - radius * 0.28, y - radius * 0.28, radius * 0.45, 0, TWO_PI);
-    ctx.fill();
-  }
-}
-
-function paintIce(ctx, canvas, base, random) {
-  ctx.globalAlpha = 0.5;
-  for (let i = 0; i < 36; i += 1) {
-    ctx.strokeStyle = random() > 0.5 ? "#ffffff" : darken(base, 0.18);
-    ctx.lineWidth = 1 + random() * 2;
-    ctx.beginPath();
-    let x = random() * canvas.width;
-    let y = random() * canvas.height;
-    ctx.moveTo(x, y);
-    for (let j = 0; j < 8; j += 1) {
-      x += (random() - 0.5) * 46;
-      y += (random() - 0.5) * 24;
-      ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-}
-
-function paintVolcanic(ctx, canvas, random) {
-  ctx.fillStyle = "#d7b34e";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < 42; i += 1) {
-    paintBlob(ctx, random() * canvas.width, random() * canvas.height, 6 + random() * 24, random() > 0.5 ? "#5c3e2b" : "#f5e48b", random, 0.58);
-  }
-  for (let i = 0; i < 12; i += 1) {
-    paintBlob(ctx, random() * canvas.width, random() * canvas.height, 4 + random() * 11, "#b2442c", random, 0.72);
-  }
-}
-
-function paintHaze(ctx, canvas, base, random) {
-  paintClouds(ctx, canvas, random);
-  ctx.fillStyle = "rgba(230, 145, 52, 0.34)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  for (let y = 20; y < canvas.height; y += 26) {
-    ctx.fillStyle = "rgba(255, 219, 142, 0.16)";
-    ctx.fillRect(0, y, canvas.width, 6);
-  }
-}
-
-function paintPluto(ctx, canvas, random) {
-  ctx.fillStyle = "#a06f52";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  paintBlob(ctx, canvas.width * 0.62, canvas.height * 0.48, 70, "#e8d7bf", random, 0.9);
-  for (let i = 0; i < 28; i += 1) {
-    paintBlob(ctx, random() * canvas.width, random() * canvas.height, 8 + random() * 26, random() > 0.5 ? "#7c5545" : "#d8b89a", random, 0.4);
-  }
-}
-
-function paintTwoTone(ctx, canvas, base, random) {
-  ctx.fillStyle = darken(base, 0.32);
-  ctx.fillRect(0, 0, canvas.width / 2, canvas.height);
-  ctx.fillStyle = lighten(base, 0.24);
-  ctx.fillRect(canvas.width / 2, 0, canvas.width / 2, canvas.height);
-  paintCratered(ctx, canvas, base, random);
-}
-
-function paintNeptune(ctx, canvas, random) {
-  ctx.fillStyle = "#2f61ce";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  for (let y = 0; y < canvas.height; y += 1) {
-    const shade = Math.sin(y * 0.055) * 0.14;
-    ctx.fillStyle = shade > 0 ? `rgba(120,170,255,${shade})` : `rgba(0,20,80,${Math.abs(shade)})`;
-    ctx.fillRect(0, y, canvas.width, 1);
-  }
-  ctx.fillStyle = "rgba(12,24,78,0.58)";
-  ctx.beginPath();
-  ctx.ellipse(canvas.width * 0.63, canvas.height * 0.55, 24, 11, 0.1, 0, TWO_PI);
-  ctx.fill();
-}
-
-function paintRocky(ctx, canvas, base, random) {
-  for (let i = 0; i < 45; i += 1) {
-    paintBlob(ctx, random() * canvas.width, random() * canvas.height, 4 + random() * 22, random() > 0.5 ? darken(base, 0.24) : lighten(base, 0.2), random, 0.42);
-  }
-}
-
-function paintBlob(ctx, cx, cy, radius, color, random, alpha) {
-  ctx.save();
-  ctx.globalAlpha *= alpha;
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  for (let i = 0; i <= 18; i += 1) {
-    const angle = (i / 18) * TWO_PI;
-    const r = radius * (0.65 + random() * 0.55);
-    const x = cx + Math.cos(angle) * r;
-    const y = cy + Math.sin(angle) * r * (0.45 + random() * 0.35);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-function addFineNoise(ctx, canvas, random, amount) {
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < imageData.data.length; i += 4) {
-    const noise = (random() - 0.5) * 255 * amount;
-    imageData.data[i] = clampByte(imageData.data[i] + noise);
-    imageData.data[i + 1] = clampByte(imageData.data[i + 1] + noise);
-    imageData.data[i + 2] = clampByte(imageData.data[i + 2] + noise);
-  }
-  ctx.putImageData(imageData, 0, 0);
-}
-
-function lighten(color, amount) {
-  return `#${color.clone().lerp(new THREE.Color("#ffffff"), amount).getHexString()}`;
-}
-
-function darken(color, amount) {
-  return `#${color.clone().lerp(new THREE.Color("#000000"), amount).getHexString()}`;
-}
-
-function clampByte(value) {
-  return Math.max(0, Math.min(255, value));
-}
-
-function hashCode(input) {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function mulberry32(seed) {
-  return function random() {
-    let t = seed += 0x6D2B79F5;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+/* ------------------------------------------------------------------ */
+/* UI                                                                  */
+/* ------------------------------------------------------------------ */
 
 function buildObjectList() {
   const order = FEATURED_ORDER.filter((id) => objectData.has(id));
@@ -850,6 +911,7 @@ function buildObjectList() {
     ["Planets", order.filter((id) => objectData.get(id)?.category === "Planet")],
     ["Moons", order.filter((id) => objectData.get(id)?.category === "Moon")],
     ["Dwarf Planets", order.filter((id) => objectData.get(id)?.category === "Dwarf planet")],
+    ["Asteroids", order.filter((id) => objectData.get(id)?.category === "Asteroid")],
     ["Regions and Comets", order.filter((id) => regionIds.has(id) || cometIds.has(id))]
   ];
 
@@ -872,6 +934,46 @@ function buildObjectList() {
     }
     els.objectList.appendChild(section);
   }
+}
+
+function speedFromSlider(value) {
+  return SPEED_MIN * Math.pow(SPEED_MAX / SPEED_MIN, value / 100);
+}
+
+function sliderFromSpeed(speed) {
+  return 100 * Math.log(speed / SPEED_MIN) / Math.log(SPEED_MAX / SPEED_MIN);
+}
+
+function formatSpeed(value) {
+  if (value < 0.95) return `${(value * 24).toFixed(1)} hr/s`;
+  if (value < 90) return `${value < 10 ? value.toFixed(1) : Math.round(value)} d/s`;
+  return `${(value / 365.25).toFixed(2)} yr/s`;
+}
+
+function setSpeed(value, syncSlider = true) {
+  speedDaysPerSecond = THREE.MathUtils.clamp(value, SPEED_MIN, SPEED_MAX);
+  if (syncSlider) els.speed.value = String(sliderFromSpeed(speedDaysPerSecond));
+  els.speedValue.textContent = formatSpeed(speedDaysPerSecond);
+  if (els.speedPresets) {
+    for (const button of els.speedPresets.querySelectorAll("button")) {
+      const presetValue = Number(button.dataset.speed);
+      button.classList.toggle("active", Math.abs(presetValue - speedDaysPerSecond) / presetValue < 0.02);
+    }
+  }
+}
+
+function buildSpeedControls() {
+  if (els.speedPresets) {
+    for (const preset of SPEED_PRESETS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = preset.label;
+      button.dataset.speed = String(preset.value);
+      button.addEventListener("click", () => setSpeed(preset.value));
+      els.speedPresets.appendChild(button);
+    }
+  }
+  setSpeed(speedFromSlider(Number(els.speed.value)), false);
 }
 
 function createLabel(id, name, category) {
@@ -996,41 +1098,64 @@ function getObjectPosition(id) {
   return position;
 }
 
+/* ------------------------------------------------------------------ */
+/* Animation                                                           */
+/* ------------------------------------------------------------------ */
+
 function animate() {
   requestAnimationFrame(animate);
-  const now = performance.now();
-  const delta = Math.min((now - lastFrameTime) / 1000, 0.05);
-  lastFrameTime = now;
-  if (running) simDays += delta * speedDaysPerSecond;
+  try {
+    const now = performance.now();
+    const delta = Math.min((now - lastFrameTime) / 1000, 0.05);
+    lastFrameTime = now;
+    elapsedSeconds += delta;
+    if (running) simDays += delta * speedDaysPerSecond;
 
-  updateBodies(delta);
-  updateLabels();
-  updateSelectionHalo();
-  updateDate();
+    updateBodies(delta);
+    updateBeltRocks();
+    updateSunPulse();
+    updateLabels();
+    updateSelectionHalo();
+    updateDate();
 
-  if (trackSelected) {
-    const target = getObjectPosition(selectedId);
-    controls.target.lerp(target, 0.08);
+    if (trackSelected) {
+      const target = getObjectPosition(selectedId);
+      controls.target.lerp(target, 0.08);
+    }
+    controls.update();
+    renderer.render(scene, camera);
+  } catch (error) {
+    lastFrameError = error;
+    if (!frameErrorReported) {
+      console.error("Solar system animation frame failed", error);
+      frameErrorReported = true;
+    }
   }
-  controls.update();
-  renderer.render(scene, camera);
 }
 
 function updateBodies(delta) {
   for (const record of records.values()) {
     const data = record.data;
     if (record.type === "body") {
-      if (data.semiMajorAU) record.group.position.copy(keplerPosition(data, simDays));
+      if (data.semiMajorAU) record.group.position.copy(keplerState(data, simDays).position);
       const rotationHours = data.rotationHours || 24;
       record.mesh.rotation.y += (delta * TWO_PI * 24 / Math.abs(rotationHours)) * Math.sign(rotationHours);
+      if (record.clouds) record.clouds.rotation.y += delta * TWO_PI * 24 / Math.abs(rotationHours) * 1.18;
 
       for (const moonRecord of record.satellites) updateMoon(moonRecord, delta);
     } else if (record.type === "comet") {
-      record.group.position.copy(keplerPosition(data, simDays));
+      const state = keplerState(data, simDays);
+      record.group.position.copy(state.position);
       record.mesh.rotation.y += delta * 0.9;
+
+      // Tails always point away from the Sun; activity scales with distance
       const away = record.group.position.clone().normalize();
-      const angle = Math.atan2(away.z, away.x);
-      record.tail.rotation.set(0, -angle, Math.PI / 2);
+      record.tailGroup.quaternion.setFromUnitVectors(UP_Y, away);
+      const activity = THREE.MathUtils.clamp(1.6 / Math.max(state.rAU, 0.05) - 0.18, 0, 1);
+      record.tailGroup.visible = activity > 0.02;
+      record.tailGroup.scale.set(0.5 + activity * 0.6, Math.max(activity, 0.001), 0.5 + activity * 0.6);
+      record.coma.material.opacity = 0.1 + activity * 0.55;
+      record.coma.scale.setScalar(0.6 + activity * 1.4);
     }
   }
 }
@@ -1044,6 +1169,29 @@ function updateMoon(record, delta) {
   if (data.rotationHours) {
     record.mesh.rotation.y += (delta * TWO_PI * 24 / Math.abs(data.rotationHours)) * Math.sign(data.rotationHours);
   }
+}
+
+function updateBeltRocks() {
+  for (const system of beltRockSystems) {
+    const { mesh, rocks } = system;
+    for (let i = 0; i < rocks.length; i += 1) {
+      const rock = rocks[i];
+      const angle = rock.angle + rock.speed * simDays;
+      instanceDummy.position.set(Math.cos(angle) * rock.radius, rock.y, Math.sin(angle) * rock.radius);
+      instanceDummy.quaternion.setFromAxisAngle(rock.spinAxis, rock.spinPhase + elapsedSeconds * rock.spinRate * 0.2);
+      instanceDummy.scale.setScalar(rock.scale);
+      instanceDummy.updateMatrix();
+      mesh.setMatrixAt(i, instanceDummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+function updateSunPulse() {
+  if (!sunPulse) return;
+  const pulse = 1 + Math.sin(elapsedSeconds * 1.4) * 0.025 + Math.sin(elapsedSeconds * 3.7) * 0.012;
+  sunPulse.inner.scale.setScalar(sunPulse.innerBase * pulse);
+  sunPulse.corona.scale.setScalar(sunPulse.coronaBase * (2 - pulse));
 }
 
 function updateLabels() {
@@ -1127,13 +1275,23 @@ function updateSelectionHalo() {
 
 function updateDate() {
   const date = new Date(BASE_DATE_UTC + simDays * 86400000);
-  els.date.textContent = date.toLocaleDateString("en-US", {
+  const options = {
     year: "numeric",
     month: "short",
     day: "numeric",
     timeZone: "UTC"
-  });
+  };
+  if (speedDaysPerSecond < 3) {
+    options.hour = "2-digit";
+    options.minute = "2-digit";
+    options.hour12 = false;
+  }
+  els.date.textContent = date.toLocaleString("en-US", options);
 }
+
+/* ------------------------------------------------------------------ */
+/* Events                                                              */
+/* ------------------------------------------------------------------ */
 
 function onPointerDown(event) {
   const rect = renderer.domElement.getBoundingClientRect();
@@ -1153,56 +1311,67 @@ function onResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-renderer.domElement.addEventListener("pointerdown", onPointerDown);
-window.addEventListener("resize", onResize);
+function bindEvents() {
+  renderer.domElement.addEventListener("pointerdown", onPointerDown);
+  window.addEventListener("resize", onResize);
 
-els.play.addEventListener("click", () => {
-  running = !running;
-  els.play.textContent = running ? "Pause" : "Play";
-  els.play.setAttribute("aria-pressed", String(running));
-});
-
-els.speed.addEventListener("input", () => {
-  speedDaysPerSecond = Number(els.speed.value);
-  els.speedValue.textContent = `${formatNumber(speedDaysPerSecond, 0)} d/s`;
-});
-
-els.track.addEventListener("click", () => {
-  trackSelected = !trackSelected;
-  els.track.classList.toggle("active", trackSelected);
-  els.track.setAttribute("aria-pressed", String(trackSelected));
-});
-
-els.labelsToggle.addEventListener("click", () => {
-  labelsVisible = !labelsVisible;
-  els.labelsToggle.classList.toggle("active", labelsVisible);
-  els.labelsToggle.setAttribute("aria-pressed", String(labelsVisible));
-});
-
-els.reset.addEventListener("click", () => {
-  controls.target.set(0, 0, 0);
-  camera.position.set(0, 62, 150);
-  simDays = 0;
-});
-
-els.search.addEventListener("input", () => {
-  const term = els.search.value.trim().toLowerCase();
-  document.querySelectorAll(".object-button").forEach((button) => {
-    const id = button.dataset.target;
-    const data = objectData.get(id);
-    const text = `${data.name} ${data.category} ${data.className}`.toLowerCase();
-    button.hidden = Boolean(term) && !text.includes(term);
+  els.play.addEventListener("click", () => {
+    running = !running;
+    els.play.textContent = running ? "Pause" : "Play";
+    els.play.classList.toggle("active", running);
+    els.play.setAttribute("aria-pressed", String(running));
   });
-});
 
-window.solarSystemApp = {
-  select: selectObject,
-  records,
-  objectData,
-  get selectedId() {
-    return selectedId;
-  },
-  get simDays() {
-    return simDays;
-  }
-};
+  els.speed.addEventListener("input", () => {
+    setSpeed(speedFromSlider(Number(els.speed.value)), false);
+  });
+
+  els.track.addEventListener("click", () => {
+    trackSelected = !trackSelected;
+    els.track.classList.toggle("active", trackSelected);
+    els.track.setAttribute("aria-pressed", String(trackSelected));
+  });
+
+  els.labelsToggle.addEventListener("click", () => {
+    labelsVisible = !labelsVisible;
+    els.labelsToggle.classList.toggle("active", labelsVisible);
+    els.labelsToggle.setAttribute("aria-pressed", String(labelsVisible));
+  });
+
+  els.reset.addEventListener("click", () => {
+    controls.target.set(0, 0, 0);
+    camera.position.set(0, 62, 150);
+    simDays = 0;
+    lastFrameTime = performance.now();
+  });
+
+  els.search.addEventListener("input", () => {
+    const term = els.search.value.trim().toLowerCase();
+    document.querySelectorAll(".object-button").forEach((button) => {
+      const id = button.dataset.target;
+      const data = objectData.get(id);
+      const text = `${data.name} ${data.category} ${data.className}`.toLowerCase();
+      button.hidden = Boolean(term) && !text.includes(term);
+    });
+  });
+}
+
+function exposeAppApi() {
+  window.solarSystemApp = {
+    select: selectObject,
+    records,
+    objectData,
+    renderer,
+    scene,
+    camera,
+    get selectedId() {
+      return selectedId;
+    },
+    get simDays() {
+      return simDays;
+    },
+    get lastFrameError() {
+      return lastFrameError;
+    }
+  };
+}

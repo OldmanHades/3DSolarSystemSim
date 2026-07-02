@@ -48,6 +48,18 @@ export const SCIENCE_SOURCES = {
   nasaHalley: {
     label: "NASA 1P/Halley",
     url: "https://science.nasa.gov/solar-system/comets/1p-halley/"
+  },
+  nasaAsteroids: {
+    label: "NASA Asteroids",
+    url: "https://science.nasa.gov/solar-system/asteroids/"
+  },
+  nasaComets: {
+    label: "NASA Comets",
+    url: "https://science.nasa.gov/solar-system/comets/"
+  },
+  jplSmallBody: {
+    label: "JPL Solar System Dynamics / Small-Body Database",
+    url: "https://ssd.jpl.nasa.gov/"
   }
 };
 
@@ -87,7 +99,7 @@ export const BODIES = [
     meanTempC: 167,
     moons: 0,
     color: "#9c9287",
-    texture: "cratered",
+    texture: "mercury",
     phase: 0.1,
     sourceIds: planetSources,
     summary: "Mercury is the smallest planet and the nearest to the Sun, with the most eccentric orbit of the eight planets.",
@@ -112,7 +124,8 @@ export const BODIES = [
     meanTempC: 464,
     moons: 0,
     color: "#d8b26e",
-    texture: "clouds",
+    texture: "venus",
+    atmosphere: { color: "#e8c87a", intensity: 0.5 },
     phase: 1.2,
     sourceIds: planetSources,
     summary: "Venus is nearly Earth-sized but rotates backward under a dense carbon dioxide atmosphere with runaway greenhouse heating.",
@@ -138,6 +151,7 @@ export const BODIES = [
     moons: 1,
     color: "#4e8fdc",
     texture: "earth",
+    atmosphere: { color: "#6ab6ff", intensity: 0.6 },
     phase: 2.3,
     sourceIds: planetSources,
     summary: "Earth is the reference plane for this model and the only known world with life.",
@@ -158,7 +172,7 @@ export const BODIES = [
         rotationHours: 655.7,
         axialTiltDeg: 6.68,
         color: "#c9c4b7",
-        texture: "cratered",
+        texture: "moon",
         phase: 0,
         sourceIds: ["nasaFactSheets", "nasaSolarSystem"],
         summary: "The Moon stabilizes Earth's axial wobble, drives ocean tides, and keeps the same hemisphere facing Earth through synchronous rotation.",
@@ -186,6 +200,7 @@ export const BODIES = [
     moons: 2,
     color: "#c8643f",
     texture: "mars",
+    atmosphere: { color: "#d8956a", intensity: 0.2 },
     phase: 3.1,
     sourceIds: planetSources,
     summary: "Mars is a cold desert world with polar caps, dust storms, extinct volcanoes, and two small captured-looking moons.",
@@ -251,9 +266,10 @@ export const BODIES = [
     axialTiltDeg: 3.13,
     meanTempC: -110,
     moons: 101,
-    rings: { inner: 1.28, outer: 2.25, color: "#a89470", opacity: 0.18 },
+    rings: { inner: 1.28, outer: 2.25, color: "#a89470", opacity: 0.18, style: "jupiter" },
     color: "#d5aa79",
-    texture: "bands",
+    texture: "jupiter",
+    atmosphere: { color: "#e3c79c", intensity: 0.26 },
     phase: 0.65,
     sourceIds: ["nasaFactSheets", "nasaJupiterMoons", "iauMpc2026"],
     summary: "Jupiter is the largest planet, a fast-spinning gas giant with faint rings, powerful magnetism, and 101 IAU-recognized moons as of March 2026.",
@@ -264,6 +280,26 @@ export const BODIES = [
     ],
     satellites: [
       {
+        id: "amalthea",
+        name: "Amalthea",
+        category: "Moon",
+        className: "Inner Jovian moon",
+        radiusKm: 83.5,
+        orbitKm: 181366,
+        orbitalPeriodDays: 0.498,
+        rotationHours: 11.95,
+        color: "#b0705a",
+        texture: "rocky",
+        phase: 5.1,
+        sourceIds: ["nasaJupiterMoons", "nasaFactSheets"],
+        summary: "Amalthea is a small, reddish, irregularly shaped moon orbiting inside Io, one of the reddest objects in the solar system.",
+        details: [
+          "It circles Jupiter in about 12 hours, closer than any of the Galilean moons.",
+          "Its red color likely comes from sulfur swept off Io.",
+          "The lumpy display mesh reflects its irregular potato-like shape."
+        ]
+      },
+      {
         id: "io",
         name: "Io",
         category: "Moon",
@@ -273,7 +309,7 @@ export const BODIES = [
         orbitalPeriodDays: 1.769,
         rotationHours: 42.46,
         color: "#e6c568",
-        texture: "volcanic",
+        texture: "io",
         phase: 0.2,
         sourceIds: ["nasaJupiterMoons", "nasaFactSheets"],
         summary: "Io is the most volcanically active world in the solar system, heated by tidal flexing from Jupiter and neighboring moons.",
@@ -293,7 +329,7 @@ export const BODIES = [
         orbitalPeriodDays: 3.551,
         rotationHours: 85.23,
         color: "#d8d5c7",
-        texture: "ice",
+        texture: "europa",
         phase: 1.4,
         sourceIds: ["nasaJupiterMoons", "nasaFactSheets"],
         summary: "Europa is an icy moon with strong evidence for a global subsurface ocean, making it a major astrobiology target.",
@@ -313,7 +349,7 @@ export const BODIES = [
         orbitalPeriodDays: 7.155,
         rotationHours: 171.7,
         color: "#a8a19a",
-        texture: "cratered",
+        texture: "ganymede",
         phase: 2.7,
         sourceIds: ["nasaJupiterMoons", "nasaFactSheets"],
         summary: "Ganymede is the largest moon in the solar system, larger than Mercury, and the only moon known to have its own magnetic field.",
@@ -333,7 +369,7 @@ export const BODIES = [
         orbitalPeriodDays: 16.689,
         rotationHours: 400.5,
         color: "#766c63",
-        texture: "cratered",
+        texture: "callisto",
         phase: 4.4,
         sourceIds: ["nasaJupiterMoons", "nasaFactSheets"],
         summary: "Callisto is heavily cratered and orbits farthest out among the four Galilean moons.",
@@ -359,9 +395,10 @@ export const BODIES = [
     axialTiltDeg: 26.73,
     meanTempC: -140,
     moons: 285,
-    rings: { inner: 1.24, outer: 2.28, color: "#d8c394", opacity: 0.58 },
+    rings: { inner: 1.24, outer: 2.28, color: "#d8c394", opacity: 0.58, style: "saturn" },
     color: "#d7bd82",
-    texture: "bandsSoft",
+    texture: "saturn",
+    atmosphere: { color: "#e8d6a8", intensity: 0.24 },
     phase: 1.7,
     sourceIds: ["nasaFactSheets", "nasaSaturnMoons", "iauMpc2026"],
     summary: "Saturn is the ringed gas giant. The app uses the IAU/MPC March 2026 count of 285 known Saturnian moons.",
@@ -401,7 +438,7 @@ export const BODIES = [
         orbitalPeriodDays: 1.37,
         rotationHours: 32.9,
         color: "#e8f2ff",
-        texture: "ice",
+        texture: "enceladus",
         phase: 1.6,
         sourceIds: ["nasaSaturnMoons", "nasaFactSheets"],
         summary: "Enceladus is a bright icy moon with a global ocean beneath its shell and active plumes near its south pole.",
@@ -409,6 +446,46 @@ export const BODIES = [
           "The bright color reflects Enceladus's high-albedo icy surface.",
           "Its plume activity is a major reason it is considered a high-priority science destination.",
           "The orbit keeps its order outside Mimas and inside Titan."
+        ]
+      },
+      {
+        id: "tethys",
+        name: "Tethys",
+        category: "Moon",
+        className: "Icy Saturn moon",
+        radiusKm: 531.1,
+        orbitKm: 294660,
+        orbitalPeriodDays: 1.888,
+        rotationHours: 45.3,
+        color: "#cfc9bd",
+        texture: "ice",
+        phase: 2.3,
+        sourceIds: ["nasaSaturnMoons", "nasaFactSheets"],
+        summary: "Tethys is a bright, icy Saturn moon marked by the huge Odysseus crater and the vast Ithaca Chasma canyon.",
+        details: [
+          "Its density is so low that it is likely almost pure water ice.",
+          "Ithaca Chasma stretches about three quarters of the way around the moon.",
+          "Tethys orbits between Enceladus and Dione."
+        ]
+      },
+      {
+        id: "dione",
+        name: "Dione",
+        category: "Moon",
+        className: "Icy Saturn moon",
+        radiusKm: 561.4,
+        orbitKm: 377400,
+        orbitalPeriodDays: 2.737,
+        rotationHours: 65.7,
+        color: "#c4bfb4",
+        texture: "ice",
+        phase: 3.8,
+        sourceIds: ["nasaSaturnMoons", "nasaFactSheets"],
+        summary: "Dione is an icy moon with bright wispy ice-cliff streaks crossing its trailing hemisphere.",
+        details: [
+          "The wispy terrain is a network of bright tectonic ice cliffs.",
+          "Dione shares its orbit with two small Trojan moons, Helene and Polydeuces.",
+          "It orbits between Tethys and Rhea."
         ]
       },
       {
@@ -421,7 +498,8 @@ export const BODIES = [
         orbitalPeriodDays: 15.945,
         rotationHours: 382.7,
         color: "#c9924c",
-        texture: "haze",
+        texture: "titan",
+        atmosphere: { color: "#e8a34d", intensity: 0.5 },
         phase: 3.1,
         sourceIds: ["nasaSaturnMoons", "nasaFactSheets"],
         summary: "Titan is larger than Mercury and has a thick nitrogen atmosphere plus methane and ethane lakes.",
@@ -461,7 +539,7 @@ export const BODIES = [
         orbitalPeriodDays: 79.321,
         rotationHours: 1903.7,
         color: "#9f9588",
-        texture: "twoTone",
+        texture: "iapetus",
         phase: 5.5,
         sourceIds: ["nasaSaturnMoons", "nasaFactSheets"],
         summary: "Iapetus is famous for its stark two-tone surface and distant, inclined orbit around Saturn.",
@@ -487,9 +565,10 @@ export const BODIES = [
     axialTiltDeg: 97.77,
     meanTempC: -195,
     moons: 29,
-    rings: { inner: 1.55, outer: 2.05, color: "#8db7c2", opacity: 0.28 },
+    rings: { inner: 1.55, outer: 2.05, color: "#8db7c2", opacity: 0.28, style: "uranus" },
     color: "#8ed6d7",
-    texture: "smooth",
+    texture: "uranus",
+    atmosphere: { color: "#9fe0e4", intensity: 0.28 },
     phase: 2.5,
     sourceIds: ["nasaFactSheets", "nasaUranusMoons", "nasaUranusWebb2025"],
     summary: "Uranus is an ice giant with a sideways axial tilt, retrograde rotation, rings, and 29 known moons.",
@@ -634,9 +713,10 @@ export const BODIES = [
     axialTiltDeg: 28.32,
     meanTempC: -200,
     moons: 16,
-    rings: { inner: 1.7, outer: 2.15, color: "#5378b8", opacity: 0.24 },
+    rings: { inner: 1.7, outer: 2.15, color: "#5378b8", opacity: 0.24, style: "neptune" },
     color: "#3b6bdc",
     texture: "neptune",
+    atmosphere: { color: "#5d86e8", intensity: 0.32 },
     phase: 3.2,
     sourceIds: ["nasaFactSheets", "nasaNeptuneMoons"],
     summary: "Neptune is the outermost planet, an ice giant with supersonic winds, faint rings, and 16 known moons.",
@@ -647,6 +727,26 @@ export const BODIES = [
     ],
     satellites: [
       {
+        id: "proteus",
+        name: "Proteus",
+        category: "Moon",
+        className: "Irregular inner Neptune moon",
+        radiusKm: 210,
+        orbitKm: 117646,
+        orbitalPeriodDays: 1.122,
+        rotationHours: 26.9,
+        color: "#6f6a66",
+        texture: "rocky",
+        phase: 4.4,
+        sourceIds: ["nasaNeptuneMoons", "nasaFactSheets"],
+        summary: "Proteus is Neptune's second-largest moon, a dark, boxy body about as large as an object can be without becoming round.",
+        details: [
+          "It was discovered by Voyager 2 in 1989 despite being larger than Nereid, because it orbits so close to Neptune's glare.",
+          "Its albedo is among the lowest of any moon in the solar system.",
+          "The lumpy display mesh reflects its distinctly non-spherical shape."
+        ]
+      },
+      {
         id: "triton",
         name: "Triton",
         category: "Moon",
@@ -656,7 +756,8 @@ export const BODIES = [
         orbitalPeriodDays: -5.877,
         rotationHours: -141,
         color: "#d7d0be",
-        texture: "ice",
+        texture: "triton",
+        atmosphere: { color: "#bcd8e8", intensity: 0.15 },
         phase: 0.2,
         sourceIds: ["nasaNeptuneMoons", "nasaFactSheets"],
         summary: "Triton is Neptune's largest moon and orbits backward, strong evidence that it was captured from the Kuiper Belt.",
@@ -702,7 +803,7 @@ export const BODIES = [
     axialTiltDeg: 4,
     moons: 0,
     color: "#8f8880",
-    texture: "cratered",
+    texture: "ceres",
     phase: 1.9,
     sourceIds: ["nasaPlanets", "nasaFactSheets"],
     summary: "Ceres is the largest object in the main asteroid belt and the only officially recognized dwarf planet in the inner solar system.",
@@ -727,6 +828,7 @@ export const BODIES = [
     moons: 5,
     color: "#b98c6d",
     texture: "pluto",
+    atmosphere: { color: "#9fc4e8", intensity: 0.16 },
     phase: 2.9,
     sourceIds: ["nasaPlanets", "nasaKuiper", "nasaFactSheets"],
     summary: "Pluto is a complex Kuiper Belt dwarf planet with a tilted, eccentric orbit and five known moons.",
@@ -746,7 +848,7 @@ export const BODIES = [
         orbitalPeriodDays: 6.387,
         rotationHours: 153.3,
         color: "#a49487",
-        texture: "cratered",
+        texture: "charon",
         phase: 0.3,
         sourceIds: ["nasaPlanets", "nasaFactSheets"],
         summary: "Charon is so large compared with Pluto that the pair orbit a barycenter outside Pluto's surface.",
@@ -754,6 +856,46 @@ export const BODIES = [
           "Its orbit is enlarged visually for selection.",
           "Charon is tidally locked to Pluto.",
           "New Horizons revealed canyons, plains, and a dark polar region on Charon."
+        ]
+      },
+      {
+        id: "nix",
+        name: "Nix",
+        category: "Moon",
+        className: "Small Pluto moon",
+        radiusKm: 19.5,
+        orbitKm: 48694,
+        orbitalPeriodDays: 24.85,
+        rotationHours: 43.9,
+        color: "#cfc8c0",
+        texture: "rocky",
+        phase: 1.8,
+        sourceIds: ["nasaPlanets", "jplSmallBody"],
+        summary: "Nix is a small, elongated Pluto moon that tumbles chaotically because of the shifting gravity of the Pluto-Charon pair.",
+        details: [
+          "New Horizons imaged Nix in 2015, revealing a bright icy surface with a reddish region.",
+          "Its rotation is chaotic rather than tidally locked; the displayed spin rate is an approximation.",
+          "It is far too small for true scale here, so its display size is exaggerated."
+        ]
+      },
+      {
+        id: "hydra",
+        name: "Hydra",
+        category: "Moon",
+        className: "Small outer Pluto moon",
+        radiusKm: 20,
+        orbitKm: 64738,
+        orbitalPeriodDays: 38.2,
+        rotationHours: 10.3,
+        color: "#d2ccc4",
+        texture: "rocky",
+        phase: 4.9,
+        sourceIds: ["nasaPlanets", "jplSmallBody"],
+        summary: "Hydra is the outermost known moon of Pluto, an irregular icy body discovered with Charon's smaller siblings in 2005.",
+        details: [
+          "Hydra spins very fast and chaotically compared with a normal tidally locked moon.",
+          "Its surface is dominated by relatively clean water ice.",
+          "Like Nix, its display size is exaggerated for visibility."
         ]
       }
     ]
@@ -771,9 +913,9 @@ export const BODIES = [
     rotationHours: 3.915,
     axialTiltDeg: null,
     moons: 2,
-    rings: { inner: 1.7, outer: 2.05, color: "#bfc6cc", opacity: 0.22 },
+    rings: { inner: 1.7, outer: 2.05, color: "#bfc6cc", opacity: 0.22, style: "haumea" },
     color: "#c8cdd1",
-    texture: "ice",
+    texture: "haumea",
     phase: 4.1,
     stretch: [1.35, 0.78, 0.92],
     sourceIds: ["nasaPlanets", "nasaKuiper", "nasaFactSheets"],
@@ -782,6 +924,47 @@ export const BODIES = [
       "Its non-spherical shape is represented by stretching the mesh.",
       "Haumea's exact pole orientation remains less familiar to non-specialists than those of the major planets, so the app does not claim a precise axial tilt.",
       "The four-hour rotation is one of the fastest known for a large solar-system body."
+    ],
+    satellites: [
+      {
+        id: "hiiaka",
+        name: "Hi'iaka",
+        category: "Moon",
+        className: "Outer Haumea moon",
+        radiusKm: 160,
+        orbitKm: 49880,
+        orbitalPeriodDays: 49.12,
+        rotationHours: 9.8,
+        color: "#d8dce0",
+        texture: "ice",
+        phase: 1.1,
+        sourceIds: ["nasaKuiper", "jplSmallBody"],
+        summary: "Hi'iaka is the larger, outer moon of Haumea, coated in crystalline water ice like its parent.",
+        details: [
+          "It was likely blasted off Haumea in the giant impact that also spun the dwarf planet up.",
+          "Its orbital period around Haumea is about 49 days.",
+          "Size and orbit values carry more uncertainty than those of planetary moons."
+        ]
+      },
+      {
+        id: "namaka",
+        name: "Namaka",
+        category: "Moon",
+        className: "Inner Haumea moon",
+        radiusKm: 85,
+        orbitKm: 25657,
+        orbitalPeriodDays: 18.28,
+        color: "#c8ccd2",
+        texture: "ice",
+        phase: 3.9,
+        sourceIds: ["nasaKuiper", "jplSmallBody"],
+        summary: "Namaka is the smaller, inner moon of Haumea on a noticeably eccentric, tilted orbit.",
+        details: [
+          "Its real orbit is elliptical and precessing; the app shows a simplified circular path.",
+          "Namaka is roughly a tenth the mass of Hi'iaka.",
+          "Both moons are named for Hawaiian deities, matching Haumea itself."
+        ]
+      }
     ]
   },
   {
@@ -798,14 +981,35 @@ export const BODIES = [
     axialTiltDeg: null,
     moons: 1,
     color: "#b77755",
-    texture: "smooth",
+    texture: "makemake",
     phase: 5.0,
     sourceIds: ["nasaPlanets", "nasaKuiper", "nasaFactSheets"],
     summary: "Makemake is a reddish Kuiper Belt dwarf planet, slightly smaller than Pluto and one of the brighter trans-Neptunian objects.",
     details: [
       "It is placed beyond Pluto's average distance in the Kuiper Belt region.",
       "Its orbit is tilted substantially relative to Earth's orbital plane.",
-      "A small moon has been detected, but this app keeps Makemake's moon count as metadata rather than rendering a tiny moon."
+      "Its small dark moon MK2 is rendered as a selectable satellite with an exaggerated display size."
+    ],
+    satellites: [
+      {
+        id: "mk2",
+        name: "MK2",
+        category: "Moon",
+        className: "Provisional Makemake moon",
+        radiusKm: 87,
+        orbitKm: 21000,
+        orbitalPeriodDays: 12.4,
+        color: "#4a4642",
+        texture: "rocky",
+        phase: 2.2,
+        sourceIds: ["nasaKuiper", "jplSmallBody"],
+        summary: "MK2 (S/2015 (136472) 1) is Makemake's charcoal-dark moon, spotted by Hubble in 2015.",
+        details: [
+          "Its surface is far darker than bright, frosty Makemake, which helped it hide for years.",
+          "Orbit and size estimates remain provisional.",
+          "The app shows a simplified circular orbit."
+        ]
+      }
     ]
   },
   {
@@ -822,7 +1026,7 @@ export const BODIES = [
     axialTiltDeg: null,
     moons: 1,
     color: "#d7d2c4",
-    texture: "ice",
+    texture: "eris",
     phase: 0.4,
     sourceIds: ["nasaPlanets", "nasaKuiper", "nasaFactSheets"],
     summary: "Eris is a distant dwarf planet whose discovery helped trigger the modern IAU planet definition debate.",
@@ -830,6 +1034,96 @@ export const BODIES = [
       "Its orbit is highly inclined and eccentric compared with the eight planets.",
       "The app shows Eris farther out than the classical Kuiper Belt to emphasize its scattered-disk style orbit.",
       "Eris has one known moon, Dysnomia."
+    ],
+    satellites: [
+      {
+        id: "dysnomia",
+        name: "Dysnomia",
+        category: "Moon",
+        className: "Eris's moon",
+        radiusKm: 308,
+        orbitKm: 37300,
+        orbitalPeriodDays: 15.786,
+        color: "#8d8781",
+        texture: "cratered",
+        phase: 0.9,
+        sourceIds: ["nasaKuiper", "jplSmallBody"],
+        summary: "Dysnomia is Eris's only known moon, dark and roughly 700 kilometers across.",
+        details: [
+          "Tracking Dysnomia's orbit is how astronomers weighed Eris and found it more massive than Pluto.",
+          "It is much darker than its bright, icy parent.",
+          "Size estimates carry significant uncertainty."
+        ]
+      }
+    ]
+  },
+  {
+    id: "vesta",
+    name: "Vesta",
+    category: "Asteroid",
+    className: "Large main-belt asteroid",
+    radiusKm: 262.7,
+    semiMajorAU: 2.362,
+    eccentricity: 0.0886,
+    inclinationDeg: 7.142,
+    orbitalPeriodDays: 1325.9,
+    rotationHours: 5.342,
+    moons: 0,
+    color: "#a89e8e",
+    texture: "cratered",
+    phase: 0.8,
+    sourceIds: ["nasaAsteroids", "jplSmallBody"],
+    summary: "Vesta is the second-most-massive body in the asteroid belt and the brightest asteroid visible from Earth.",
+    details: [
+      "NASA's Dawn spacecraft orbited Vesta in 2011-2012 and mapped its huge Rheasilvia impact basin.",
+      "Vesta is differentiated like a small planet, with a crust, mantle, and iron core.",
+      "Meteorites from Vesta (the HED family) have landed on Earth."
+    ]
+  },
+  {
+    id: "pallas",
+    name: "Pallas",
+    category: "Asteroid",
+    className: "Large main-belt asteroid",
+    radiusKm: 256,
+    semiMajorAU: 2.771,
+    eccentricity: 0.2299,
+    inclinationDeg: 34.93,
+    orbitalPeriodDays: 1686,
+    rotationHours: 7.813,
+    moons: 0,
+    color: "#8e8e94",
+    texture: "cratered",
+    phase: 2.4,
+    sourceIds: ["nasaAsteroids", "jplSmallBody"],
+    summary: "Pallas is the third-most-massive asteroid, on an unusually steep orbit tilted almost 35 degrees from the ecliptic.",
+    details: [
+      "Its extreme inclination is clearly visible in the rendered orbit line.",
+      "Pallas was the second asteroid ever discovered, in 1802.",
+      "Its heavily battered surface has been compared to a golf ball."
+    ]
+  },
+  {
+    id: "hygiea",
+    name: "Hygiea",
+    category: "Asteroid",
+    className: "Outer main-belt asteroid",
+    radiusKm: 217,
+    semiMajorAU: 3.142,
+    eccentricity: 0.112,
+    inclinationDeg: 3.83,
+    orbitalPeriodDays: 2033,
+    rotationHours: 13.83,
+    moons: 0,
+    color: "#7b7672",
+    texture: "cratered",
+    phase: 4.6,
+    sourceIds: ["nasaAsteroids", "jplSmallBody"],
+    summary: "Hygiea is the fourth-largest object in the asteroid belt, a dark carbonaceous body in the outer belt.",
+    details: [
+      "Observations suggest Hygiea is nearly spherical, prompting debate about dwarf-planet status.",
+      "It is the largest member of one of the biggest asteroid families.",
+      "Its dark surface reflects only about 7 percent of incoming sunlight."
     ]
   }
 ];
@@ -908,6 +1202,52 @@ export const COMETS = [
       "Its nucleus is only about 15 by 8 kilometers, so the visible coma and tail are illustrative.",
       "The next return to Earth's skies is expected in 2061."
     ]
+  },
+  {
+    id: "encke",
+    name: "2P/Encke",
+    category: "Comet",
+    className: "Short-period comet",
+    radiusKm: 2.4,
+    semiMajorAU: 2.215,
+    eccentricity: 0.848,
+    inclinationDeg: 11.78,
+    orbitalPeriodDays: 1204,
+    rotationHours: 11.1,
+    perihelionAU: 0.336,
+    aphelionAU: 4.09,
+    color: "#d8e4ee",
+    phase: 3.7,
+    sourceIds: ["nasaComets", "jplSmallBody"],
+    summary: "Encke's Comet has the shortest orbital period of any known bright comet, returning to perihelion about every 3.3 years.",
+    details: [
+      "Its perihelion dives inside Mercury's orbit before it swings back out past the asteroid belt.",
+      "Debris from Encke feeds the Taurid meteor showers.",
+      "It was the second comet, after Halley, recognized as periodic."
+    ]
+  },
+  {
+    id: "67p",
+    name: "67P/Churyumov-Gerasimenko",
+    category: "Comet",
+    className: "Jupiter-family comet",
+    radiusKm: 2,
+    semiMajorAU: 3.463,
+    eccentricity: 0.641,
+    inclinationDeg: 7.04,
+    orbitalPeriodDays: 2353,
+    rotationHours: 12.4,
+    perihelionAU: 1.243,
+    aphelionAU: 5.68,
+    color: "#cfd8e2",
+    phase: 1.3,
+    sourceIds: ["nasaComets", "jplSmallBody"],
+    summary: "67P is the twin-lobed comet orbited by ESA's Rosetta spacecraft from 2014 to 2016 and landed on by Philae.",
+    details: [
+      "Rosetta made it the most closely studied comet in history.",
+      "Its distinctive rubber-duck shape likely formed from two bodies merging gently.",
+      "Its 6.4-year orbit is shepherded by Jupiter, making it a Jupiter-family comet."
+    ]
   }
 ];
 
@@ -922,7 +1262,11 @@ export const FEATURED_ORDER = [
   "deimos",
   "asteroid-belt",
   "ceres",
+  "vesta",
+  "pallas",
+  "hygiea",
   "jupiter",
+  "amalthea",
   "io",
   "europa",
   "ganymede",
@@ -930,6 +1274,8 @@ export const FEATURED_ORDER = [
   "saturn",
   "mimas",
   "enceladus",
+  "tethys",
+  "dione",
   "titan",
   "rhea",
   "iapetus",
@@ -941,14 +1287,23 @@ export const FEATURED_ORDER = [
   "titania",
   "oberon",
   "neptune",
+  "proteus",
   "triton",
   "nereid",
   "kuiper-belt",
   "pluto",
   "charon",
+  "nix",
+  "hydra",
   "haumea",
+  "hiiaka",
+  "namaka",
   "makemake",
+  "mk2",
   "eris",
+  "dysnomia",
   "halley",
+  "encke",
+  "67p",
   "oort-cloud"
 ];

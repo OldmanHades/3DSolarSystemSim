@@ -299,10 +299,10 @@ button {
   z-index: 12;
   left: 50%;
   bottom: 16px;
-  width: min(760px, calc(100vw - 32px));
+  width: min(920px, calc(100vw - 32px));
   min-height: 58px;
   display: grid;
-  grid-template-columns: auto minmax(190px, 1fr) auto auto auto auto;
+  grid-template-columns: auto minmax(150px, 1fr) auto auto auto auto auto;
   align-items: center;
   gap: 10px;
   transform: translateX(-50%);
@@ -361,6 +361,36 @@ button {
   color: var(--amber);
   font-size: 0.8rem;
   text-align: right;
+}
+
+.speed-presets {
+  display: flex;
+  gap: 4px;
+}
+
+.speed-presets button {
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  padding: 0 8px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.speed-presets button:hover,
+.speed-presets button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: var(--text);
+  outline: none;
+}
+
+.speed-presets button.active {
+  border-color: rgba(242, 179, 91, 0.65);
+  background: rgba(242, 179, 91, 0.14);
+  color: var(--amber);
 }
 
 .date-chip {
@@ -465,6 +495,10 @@ button {
   }
 
   .control-bar .date-chip {
+    display: none;
+  }
+
+  .control-bar .speed-presets {
     display: none;
   }
 }

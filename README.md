@@ -1,6 +1,6 @@
 # 3D Solar System Simulation
 
-An interactive Windows 11-friendly Three.js simulation of the solar system. It includes the Sun, eight planets, five officially recognized dwarf planets, selected major moons, rings, the main asteroid belt, the Kuiper Belt, the Oort Cloud, and Halley's Comet.
+An interactive Windows 11-friendly Three.js simulation of the solar system. It includes the Sun, eight planets, five officially recognized dwarf planets, 24 selectable moons, three large main-belt asteroids (Vesta, Pallas, Hygiea), ring systems, the main asteroid belt, the Kuiper Belt, the Oort Cloud, and three comets (1P/Halley, 2P/Encke, 67P/Churyumov-Gerasimenko).
 
 The app is designed as a local static browser experience: no build step, no npm install, and no internet connection required after cloning because Three.js is vendored in `vendor/`.
 
@@ -10,10 +10,15 @@ The app is designed as a local static browser experience: no build step, no npm 
 
 - Interactive 3D scene with orbit controls, zoom, pan, object labels, and a simulation clock.
 - Selectable bodies and regions with explanations, source links, and physical/orbital stats.
-- Elliptical planet, dwarf planet, and comet orbits using semimajor axis, eccentricity, inclination, and sidereal period metadata.
+- Elliptical planet, dwarf planet, asteroid, and comet orbits using semimajor axis, eccentricity, inclination, and sidereal period metadata.
 - Tilted planetary spin axes, visible ring systems, and expanded moon systems for major satellites.
-- Searchable object list covering 39 selectable items.
-- Procedural visual textures for planets, moons, belts, stars, rings, and comet effects.
+- Searchable object list covering 54 selectable items, including small moons of Pluto, Eris, Haumea, and Makemake.
+- Detailed procedural textures with recognizable landmarks: Earth's continents and rotating cloud deck, Jupiter's Great Red Spot, Mars's Valles Marineris and Tharsis volcanoes, Pluto's heart, Iapetus's two-tone surface, Enceladus's tiger stripes, and more.
+- Bump-mapped cratered terrain, atmospheric rim glow on worlds with significant atmospheres, and lumpy irregular meshes for small moons, asteroids, and comet nuclei.
+- Saturn's rings with the Cassini Division, Encke gap, and F ring, plus distinct ring styles for Jupiter, Uranus, Neptune, and Haumea.
+- Tumbling 3D debris fields in the asteroid belt and Kuiper Belt, a Milky Way band in the starfield, and a pulsing solar corona.
+- Comets with distance-dependent activity: separate ion and dust tails that grow near perihelion, always point away from the Sun, and fade in the outer system.
+- Logarithmic speed slider from about 30 simulated minutes per second up to years per second, with one-click presets (1 hr/s to 1 yr/s). The default pace is 7 days per second.
 - Responsive layout verified at desktop and mobile-sized viewports.
 
 ## Run on Windows 11
@@ -49,7 +54,7 @@ http://127.0.0.1:8765/
 - Object list: choose any body, moon, comet, or region.
 - Search: filter selectable objects.
 - Pause/Play: stop or resume the simulation clock.
-- Speed: adjust simulated days per real second.
+- Speed: logarithmic slider for simulated time per real second, plus preset buttons (1 hr/s, 1 day/s, 1 wk/s, 1 mo/s, 1 yr/s). At speeds below 3 days per second the date chip also shows the simulated time of day.
 - Track: keep the camera target on the selected object.
 - Labels: show or hide scene labels.
 - Reset: return to the default date and camera view.
@@ -92,6 +97,7 @@ The rendered scene uses visual compression. True solar-system distances and true
 ├── Start-SolarSystem.ps1      # PowerShell local server
 ├── js/
 │   ├── main.js                # Three.js rendering, animation, selection, UI wiring
+│   ├── textures.js            # Procedural texture painters, ring/glow textures
 │   └── solarData.js           # Solar-system data, descriptions, and source metadata
 ├── vendor/
 │   ├── three.module.js        # Vendored Three.js 0.184.0 module

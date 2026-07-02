@@ -51,9 +51,10 @@
         <button id="play" class="control-button active" type="button" aria-pressed="true">Pause</button>
         <label class="speed-control">
           <span>Speed</span>
-          <input id="speed" type="range" min="1" max="240" step="1" value="36">
-          <strong id="speed-value">36 d/s</strong>
+          <input id="speed" type="range" min="0" max="100" step="0.5" value="58">
+          <strong id="speed-value">7 d/s</strong>
         </label>
+        <div id="speed-presets" class="speed-presets" role="group" aria-label="Speed presets"></div>
         <time id="date" class="date-chip">Jun 12, 2026</time>
         <button id="track" class="control-button active" type="button" aria-pressed="true">Track</button>
         <button id="labels-toggle" class="control-button active" type="button" aria-pressed="true">Labels</button>
@@ -61,6 +62,6 @@
       </nav>
     </main>
 
-    <script type="module" src="./js/main.js"></script>
+    <script type="module" src="./js/main.js?v=2026-07-02"></script>
   </body>
 </html>
