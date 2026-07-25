@@ -1069,6 +1069,50 @@ const PAINTERS = {
     }
   },
 
+  // Comet nuclei are among the darkest objects in the solar system (albedo ~0.04),
+  // so the surface is near-black charcoal with a little exposed ice.
+  comet(ctx, hctx, w, h, base, random) {
+    paintBase(ctx, w, h, new THREE.Color("#2b2823"));
+    for (let i = 0; i < 40; i += 1) {
+      paintBlob(ctx, random() * w, random() * h, 8 + random() * 30, random() > 0.5 ? "#211e1a" : "#3a352c", random, 0.5);
+    }
+    // Pitted, collapsed terrain
+    for (let i = 0; i < 70; i += 1) {
+      paintCrater(ctx, hctx, random() * w, random() * h, 2 + random() * 9, new THREE.Color("#332f29"), random, { depth: 0.4 });
+    }
+    // Exposed ice patches and active vent scars
+    for (let i = 0; i < 12; i += 1) {
+      const x = random() * w;
+      const y = random() * h;
+      const r = 3 + random() * 8;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, "rgba(206,214,220,0.75)");
+      g.addColorStop(0.6, "rgba(150,158,166,0.28)");
+      g.addColorStop(1, "rgba(120,128,136,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, TWO_PI);
+      ctx.fill();
+    }
+    // Dust-mantled ridges
+    ctx.save();
+    ctx.strokeStyle = "rgba(90,82,70,0.5)";
+    for (let i = 0; i < 16; i += 1) {
+      ctx.lineWidth = 1 + random() * 2.4;
+      ctx.beginPath();
+      let x = random() * w;
+      let y = random() * h;
+      ctx.moveTo(x, y);
+      for (let s = 0; s < 5; s += 1) {
+        x += (random() - 0.4) * 40;
+        y += (random() - 0.5) * 24;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  },
+
   smooth(ctx, hctx, w, h, base, random) {
     paintBase(ctx, w, h, base);
     for (let i = 0; i < 14; i += 1) {
@@ -1080,7 +1124,8 @@ const PAINTERS = {
 // Styles that get a bump/height layer
 const BUMPED = new Set([
   "mercury", "moon", "mars", "ganymede", "callisto", "iapetus", "pluto",
-  "charon", "ceres", "cratered", "rocky", "ice", "eris", "enceladus", "triton", "earth"
+  "charon", "ceres", "cratered", "rocky", "ice", "eris", "enceladus", "triton",
+  "earth", "comet"
 ]);
 
 const cache = new Map();
@@ -1121,20 +1166,101 @@ export function createTextureSet(data) {
   set.map = new THREE.CanvasTexture(color.canvas);
   set.map.colorSpace = THREE.SRGBColorSpace;
   set.map.anisotropy = 8;
+  // Longitude wraps all the way around, so let the last texel blend into the
+  // first one instead of hard-clamping into a visible seam.
+  set.map.wrapS = THREE.RepeatWrapping;
   if (height) {
     applyNoise(height.ctx, w, h, 0.3);
     set.bumpMap = new THREE.CanvasTexture(height.canvas);
     set.bumpMap.anisotropy = 4;
+    set.bumpMap.wrapS = THREE.RepeatWrapping;
   }
   if (layers.rough) {
     set.roughnessMap = new THREE.CanvasTexture(layers.rough.canvas);
+    set.roughnessMap.wrapS = THREE.RepeatWrapping;
   }
   if (layers.clouds) {
     set.cloudsMap = new THREE.CanvasTexture(layers.clouds.canvas);
     set.cloudsMap.colorSpace = THREE.SRGBColorSpace;
+    set.cloudsMap.wrapS = THREE.RepeatWrapping;
   }
   cache.set(key, set);
   return set;
+}
+
+/* ------------------------------------------------------------------ */
+/* Sprite and billboard textures.                                      */
+/* ------------------------------------------------------------------ */
+
+let starTexture = null;
+
+// Soft round star point. Without this, THREE.Points renders hard squares.
+export function createStarTexture() {
+  if (starTexture) return starTexture;
+  const size = 64;
+  const { canvas, ctx } = makeCanvas(size, size);
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, "rgba(255,255,255,1)");
+  gradient.addColorStop(0.18, "rgba(255,255,255,0.92)");
+  gradient.addColorStop(0.45, "rgba(255,255,255,0.28)");
+  gradient.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  starTexture = new THREE.CanvasTexture(canvas);
+  starTexture.colorSpace = THREE.SRGBColorSpace;
+  return starTexture;
+}
+
+// Comet tail sheet. v = 1 sits at the nucleus and v = 0 at the far tip, so the
+// alpha runs from a dense root to nothing. Density also falls off away from the
+// axis, which keeps the tail from ending in a hard-edged silhouette.
+export function createTailTexture(kind) {
+  const w = 128;
+  const h = 256;
+  const { canvas, ctx } = makeCanvas(w, h);
+  const random = mulberry32(hashCode(`tail:${kind}`));
+  const ion = kind === "ion";
+  const tint = ion ? [190, 226, 255] : [255, 240, 214];
+  const imageData = ctx.createImageData(w, h);
+  const data = imageData.data;
+
+  // Long-wavelength streamers: ion tails show crisp rays, dust tails show
+  // broad bands from outburst to outburst.
+  const streaks = [];
+  for (let i = 0; i < (ion ? 9 : 5); i += 1) {
+    streaks.push({
+      centre: random(),
+      width: ion ? 0.02 + random() * 0.05 : 0.1 + random() * 0.2,
+      strength: ion ? 0.4 + random() * 0.6 : 0.25 + random() * 0.35
+    });
+  }
+
+  for (let y = 0; y < h; y += 1) {
+    // Canvas y = 0 becomes v = 1 after the default vertical flip, so y measures
+    // distance from the nucleus.
+    const t = y / (h - 1);
+    const lengthFade = Math.pow(1 - t, ion ? 1.25 : 1.6);
+    for (let x = 0; x < w; x += 1) {
+      const u = x / (w - 1);
+      let streak = 0.55;
+      for (const s of streaks) {
+        const d = Math.abs(u - s.centre) / s.width;
+        if (d < 1) streak += s.strength * Math.pow(1 - d, 2);
+      }
+      const index = (y * w + x) * 4;
+      const alpha = Math.min(1, lengthFade * streak) * (ion ? 0.9 : 0.75);
+      data[index] = tint[0];
+      data[index + 1] = tint[1];
+      data[index + 2] = tint[2];
+      data[index + 3] = Math.round(alpha * 255);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  return texture;
 }
 
 /* ------------------------------------------------------------------ */

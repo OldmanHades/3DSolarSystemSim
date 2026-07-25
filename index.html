@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Solar System 3D Simulation</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./styles.css?v=2026-07-25">
     <script type="importmap">
       {
         "imports": {
@@ -51,17 +51,18 @@
         <button id="play" class="control-button active" type="button" aria-pressed="true">Pause</button>
         <label class="speed-control">
           <span>Speed</span>
-          <input id="speed" type="range" min="0" max="100" step="0.5" value="58">
-          <strong id="speed-value">7 d/s</strong>
+          <input id="speed" type="range" min="0" max="100" step="0.5" value="43.5">
+          <strong id="speed-value">1.0 d/s</strong>
         </label>
         <div id="speed-presets" class="speed-presets" role="group" aria-label="Speed presets"></div>
         <time id="date" class="date-chip">Jun 12, 2026</time>
         <button id="track" class="control-button active" type="button" aria-pressed="true">Track</button>
         <button id="labels-toggle" class="control-button active" type="button" aria-pressed="true">Labels</button>
+        <button id="orbits-toggle" class="control-button active" type="button" aria-pressed="true">Orbits</button>
         <button id="reset-view" class="control-button" type="button">Reset</button>
       </nav>
     </main>
 
-    <script type="module" src="./js/main.js?v=2026-07-02"></script>
+    <script type="module" src="./js/main.js?v=2026-07-09"></script>
   </body>
 </html>
